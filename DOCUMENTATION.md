@@ -109,7 +109,23 @@ There is no version of this code where a record belonging to someone else is eve
 
 **Why it is needed to understand.** If `get-record` only checked "does a record with this slug exist," changing the identifier in a URL would be the entire attack - no cleverness required, just curiosity or a script incrementing a counter. This is one of the most common real-world access-control failures precisely because the code that has this bug still "works" for the legitimate user; the hole only shows up when someone else tries a different identifier.
 
-**How I implemented protection against it.** The combination of an unguessable slug (defense against blind guessing) and a mandatory ownership filter on every lookup (defense even if a real slug *is* somehow obtained - shared accidentally, logged somewhere, brute-forced despite the odds) is what actually closes this, not either one alone. Proven directly: User B given User A's real, correct slug still gets `404` on every route (`docs/evidence/attack-table.png`).
+**How I implemented protection against it.** The combination of an unguessable slug (defense against blind guessing) and a mandatory ownership filter on every lookup (defense even if a real slug *is* somehow obtained - shared accidentally, logged somewhere, brute-forced despite the odds) is what actually closes this, not either one alone. Proven directly against two real accounts, attacking in both directions, every route, via raw curl rather than just the UI:
+
+| # | Method + route | What was attempted | Result | Pass/Fail |
+|---|---|---|---|---|
+| 1 | `GET /get-record` | User B reads User A's record by its real, correct slug | `404` | Pass |
+| 2 | `POST /delete-record` | User B deletes User A's record by its real, correct slug | `404`; record confirmed still present afterward | Pass |
+| 3 | `GET /list-records` | User B lists their own records, checking whether User A's leaks in | `{"records":[],"total":0}` - A's record absent | Pass |
+| 4 | `GET /get-record` | User B tries a guessed slug (one character of A's real slug altered) | `404` | Pass |
+| 5 | `GET /get-record` | User B supplies A's raw database `id` (UUID shape) instead of a slug | `400` - rejected by schema validation before any query ran | Pass |
+| 6 | `GET /get-record` | No session at all, targeting A's real slug | `401` | Pass |
+| 7 | `GET /list-records` | No session at all | `401` | Pass |
+| 8 | `POST /delete-record` | No session at all, targeting A's real slug | `401` | Pass |
+| 9 | `POST /create-record` | No session at all | `401` | Pass |
+| 10 | `GET /get-record` | User A reads User B's record by its real, correct slug (reciprocal) | `404` | Pass |
+| 11 | `POST /delete-record` | User A deletes User B's record by its real, correct slug (reciprocal) | `404`; record confirmed still present afterward | Pass |
+
+Every row above was run as an actual HTTP request against the deployed functions, not reasoned through - including the two "record still exists afterward" rows, each confirmed with a follow-up `GET` before the table was written.
 
 **What I chose against, and why.** Relying on the slug being unguessable as the *only* protection (skipping the `user_id` filter, reasoning "they'd need to already know the exact slug") was the alternative, and it's a bad one - it's security by obscurity, not access control, and it fails completely the moment a real slug leaks through any channel this design didn't anticipate.
 
