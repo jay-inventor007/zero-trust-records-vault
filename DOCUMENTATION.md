@@ -27,15 +27,25 @@ The app appears at `http://localhost:5173`.
 
 **Signing up and signing in.** Reused unchanged from Assessment 1. Not re-documented here since it isn't what this assessment is graded on, except for one detail that matters later: `signin/index.ts` already refuses to issue a session to an account that hasn't verified its email, which turns out to shape how this slice's own authorization check behaves (see Section 6).
 
-**Viewing your records.** `/records` (`RecordsListPage.tsx`) calls `list-records/index.ts` on load. That function requires a session and a verified email (`requireVerifiedUser` in `_shared/requireVerifiedUser.ts`), then runs one query: `select ... from records where user_id = <caller> order by created_at desc`, with the total count returned from the same call. A brand-new user has zero rows, so the page shows a genuine empty state ("You have no records yet"), not a placeholder or sample record.
+**Viewing your records.** `/records` (`RecordsListPage.tsx`) calls `list-records/index.ts` on load. That function requires a session and a verified email (`requireVerifiedUser` in `_shared/requireVerifiedUser.ts`), then runs one query: `select ... from records where user_id = <caller> order by created_at desc`, with the total count returned from the same call. A brand-new user has zero rows, so the page shows a genuine empty state ("You have no records yet"), not a placeholder or sample record:
+
+![The records page for a user with no records at all, showing the real empty state](docs/evidence/genuine-empty-state.png)
+
+Once records exist, they're listed with their titles and creation dates:
+
+![The records list showing two real records, "Project ideas" and "Grocery list"](docs/evidence/records-list-view.png)
 
 **Creating a record.** The same page's inline form posts to `create-record/index.ts`, which is rate limited per user, validates the title/body with `createRecordSchema`, generates a random opaque `slug` in application code (`_shared/slug.ts`), and inserts the row. The response includes the new slug, so the list can update without a follow-up read.
 
 **Viewing one record.** Clicking a record goes to `/records/:slug` (`RecordDetailPage.tsx`), where the URL parameter is the slug, never the database id. That page calls `get-record/index.ts?slug=...`, which runs `select ... where slug = <requested> and user_id = <caller>` - the ownership check is part of the same query, not a separate step afterward. If the slug doesn't exist at all, or exists but belongs to someone else, this query returns no row either way, and the function replies `404` in both cases - see Section 5 for why that's deliberate.
 
+![A real record's address bar, reading /records/ggvn_q6UMrUy - a slug, not a UUID](docs/evidence/url-shows-slug-not-id.png)
+
 **Deleting a record.** After a confirmation step in the UI, the page posts the slug to `delete-record/index.ts`, which calls the `delete_record_with_audit` Postgres function. That function re-checks ownership itself (slug + caller's user id), and if it matches, writes a row to `deletion_log` (capturing a snapshot of the title) and deletes the record, both inside the same database transaction, before returning. If no row matched, the Edge Function replies `404`, identically to the "not found" case above.
 
-**The audit trail.** `deletion_log` is never read back by this app's own UI (the brief only requires that it's written, not that there's a viewer for it), but it exists independently of `records` and survives the row it describes being deleted, which is the property that actually matters for a real dispute or investigation later.
+**The audit trail.** `deletion_log` is never read back by this app's own UI (the brief only requires that it's written, not that there's a viewer for it), but it exists independently of `records` and survives the row it describes being deleted, which is the property that actually matters for a real dispute or investigation later:
+
+![The deletion_log table with two real rows: one from the naive delete path (User A First Note) and one from the optimized RPC path (User B Secret Note), each with its own distinct user_id and record_id](docs/evidence/deletion-log-two-real-entries.png)
 
 ## Section 4: The Data Model
 
