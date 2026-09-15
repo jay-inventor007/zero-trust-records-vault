@@ -51,9 +51,9 @@ Per the brief's requirement for a genuine before/after, not an invented one:
   three would log a deletion that never happened. Optimized into a single Postgres
   function (`delete_record_with_audit`) doing all three inside one transaction: one round
   trip, and now atomic as a side effect of the fix.
-- **`get-record`** stayed at one query both before and after - the naive version fetched by
-  slug alone and would have needed a second check (or a risky post-fetch comparison) to be
-  secure; the fixed version folds the ownership check into the same query for free. No
+- **`get-record`** was written the scoped way from the start, no naive version built or
+  needed - fetching by slug alone would still have been one query, just an insecure one
+  needing a second check (or a risky post-fetch comparison) to become safe. No
   count change, but this is where the "scoping vs post-fetch check" concept actually lives.
 
 Both naive versions were actually deployed and tested before being replaced, specifically
